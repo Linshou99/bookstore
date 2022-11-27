@@ -4,6 +4,11 @@ import logging
 import sqlite3 as sqlite
 from be.model import error
 from be.model import db_conn
+import sqlalchemy
+from sqlalchemy import Column, String, create_engine, Integer, Text, Date
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from be.model import store
 
 # encode a json string like:
 #   {
@@ -57,17 +62,20 @@ class User(db_conn.DBConn):
         try:
             terminal = "terminal_{}".format(str(time.time()))
             token = jwt_encode(user_id, terminal)
-            self.conn.execute(
-                "INSERT into user(user_id, password, balance, token, terminal) "
-                "VALUES (?, ?, ?, ?, ?);",
-                (user_id, password, 0, token, terminal), )
+            #self.conn.execute(
+            #    "INSERT into user(user_id, password, balance, token, terminal) "
+             #   "VALUES (?, ?, ?, ?, ?);",
+              #  (user_id, password, 0, token, terminal), )
+            #self.conn.execute("INSERT INTO store.Users (user_id, password, balance, token, terminal) values (:user_id, :password, 0, :token, :terminal)",{"user_id":user_id,"password": password,"token":token,"terminal":terminal })
+            self.conn.add(store.Users(user_id=user_id, password=password, balance=0, token=token, terminal=terminal))
             self.conn.commit()
-        except sqlite.Error:
+        except sqlalchemy.exc.IntegrityError:
             return error.error_exist_user_id(user_id)
         return 200, "ok"
 
     def check_token(self, user_id: str, token: str) -> (int, str):
-        cursor = self.conn.execute("SELECT token from user where user_id=?", (user_id,))
+        cursor = self.conn.query(store.Users.token).filter(store.Users.user_id == user_id)
+        #cursor = self.conn.execute("SELECT token from user where user_id=?", (user_id,))
         row = cursor.fetchone()
         if row is None:
             return error.error_authorization_fail()
@@ -77,7 +85,8 @@ class User(db_conn.DBConn):
         return 200, "ok"
 
     def check_password(self, user_id: str, password: str) -> (int, str):
-        cursor = self.conn.execute("SELECT password from user where user_id=?", (user_id,))
+        cursor = self.conn.query(store.Users.password).filter(store.Users.user_id == user_id)
+        #cursor = self.conn.execute("SELECT password from user where user_id=?", (user_id,))
         row = cursor.fetchone()
         if row is None:
             return error.error_authorization_fail()
@@ -95,13 +104,19 @@ class User(db_conn.DBConn):
                 return code, message, ""
 
             token = jwt_encode(user_id, terminal)
-            cursor = self.conn.execute(
-                "UPDATE user set token= ? , terminal = ? where user_id = ?",
-                (token, terminal, user_id), )
-            if cursor.rowcount == 0:
+            users = self.conn.query(store.Users).filter(store.Users.user_id == user_id).all()# 查询条件
+            if users:
+                users.token = token # 更新操作
+                users.terminal = terminal
+                self.conn.add(users) # 添加到会话
+            #cursor = self.conn.query(store.Users).filter_by(store.Users.user_id == user_id).update({'token':token,'terminal':terminal})   
+            #cursor = self.conn.execute(
+             #   "UPDATE user set token= ? , terminal = ? where user_id = ?",
+              #  (token, terminal, user_id), )
+            else:#cursor.rowcount == 0:
                 return error.error_authorization_fail() + ("", )
-            self.conn.commit()
-        except sqlite.Error as e:
+            self.conn.commit()# 提交即保存到数据库
+        except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e)), ""
         except BaseException as e:
             return 530, "{}".format(str(e)), ""
@@ -115,21 +130,33 @@ class User(db_conn.DBConn):
 
             terminal = "terminal_{}".format(str(time.time()))
             dummy_token = jwt_encode(user_id, terminal)
-
-            cursor = self.conn.execute(
-                "UPDATE user SET token = ?, terminal = ? WHERE user_id=?",
-                (dummy_token, terminal, user_id), )
+            cursor = self.conn.query(store.Users).filter_by(store.Users.user_id == user_id).update({'token':dummy_token,'terminal':terminal})
+            #cursor = self.conn.execute(
+             #   "UPDATE user SET token = ?, terminal = ? WHERE user_id=?",
+              #  (dummy_token, terminal, user_id), )
             if cursor.rowcount == 0:
                 return error.error_authorization_fail()
 
             self.conn.commit()
-        except sqlite.Error as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
         except BaseException as e:
             return 530, "{}".format(str(e))
         return 200, "ok"
 
     def unregister(self, user_id: str, password: str) -> (int, str):
+        user = self.conn.query(store.Users).filter(store.Users.user_id == user_id).first()
+        if user == None:
+            code, message = error.error_authorization_fail()
+            return code, message
+
+        if password != user.password:
+            code, message = error.error_authorization_fail()
+            return code, message
+        self.conn.query(store.Users).filter(store.Users.user_id == user_id).delete()
+        self.conn.commit()
+        return 200, "ok"
+
         try:
             code, message = self.check_password(user_id, password)
             if code != 200:
@@ -140,9 +167,10 @@ class User(db_conn.DBConn):
                 self.conn.commit()
             else:
                 return error.error_authorization_fail()
-        except sqlite.Error as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
         except BaseException as e:
+            print("{}".format(str(e)))
             return 530, "{}".format(str(e))
         return 200, "ok"
 
@@ -161,7 +189,7 @@ class User(db_conn.DBConn):
                 return error.error_authorization_fail()
 
             self.conn.commit()
-        except sqlite.Error as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
         except BaseException as e:
             return 530, "{}".format(str(e))
