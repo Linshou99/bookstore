@@ -12,24 +12,27 @@ class DBConn:
         self.conn = DbSession() # 创建程序与数据库之间的对话
 
     def user_id_exist(self, user_id):
-        cursor = self.conn.execute("SELECT user_id FROM user WHERE user_id = ?;", (user_id,))
-        row = cursor.fetchone()
+        cursor = self.conn.query(store.Users.user_id).filter(store.Users.user_id == user_id)
+        #cursor = self.conn.execute("SELECT user_id FROM user WHERE user_id = ?;", (user_id,))
+        row = cursor.first()
         if row is None:
             return False
         else:
             return True
 
     def book_id_exist(self, store_id, book_id):
-        cursor = self.conn.execute("SELECT book_id FROM store WHERE store_id = ? AND book_id = ?;", (store_id, book_id))
-        row = cursor.fetchone()
+        cursor = self.conn.query(store.Store.book_id).filter(store.Store.store_id == store_id and store.Store.book_id == book_id)
+        #cursor = self.conn.execute("SELECT book_id FROM store WHERE store_id = ? AND book_id = ?;", (store_id, book_id))
+        row = cursor.first() # 与 .fetchone() 同意思，但 .fetchone() 是 sqlite 的属性
         if row is None:
             return False
         else:
             return True
 
     def store_id_exist(self, store_id):
-        cursor = self.conn.execute("SELECT store_id FROM user_store WHERE store_id = ?;", (store_id,))
-        row = cursor.fetchone()
+        cursor = self.conn.query(store.User_store.store_id).filter(store.User_store.store_id == store_id)
+        #cursor = self.conn.execute("SELECT store_id FROM user_store WHERE store_id = ?;", (store_id,))
+        row = cursor.first()
         if row is None:
             return False
         else:
