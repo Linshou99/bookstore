@@ -4,11 +4,11 @@ from urllib.parse import urljoin
 
 class Auth:
     def __init__(self, url_prefix):
-        self.url_prefix = urljoin(url_prefix, "auth/")
+        self.url_prefix = urljoin(url_prefix, "auth/")#"http://127.0.0.1:5000/auth/"
 
     def login(self, user_id: str, password: str, terminal: str) -> (int, str):
         json = {"user_id": user_id, "password": password, "terminal": terminal}
-        url = urljoin(self.url_prefix, "login")
+        url = urljoin(self.url_prefix, "login")#"http://127.0.0.1:5000/auth/login"，测试在 be/view/auth.py 文件中的访问后端接口的函数 /login
         r = requests.post(url, json=json)
         return r.status_code, r.json().get("token")
 
