@@ -11,7 +11,7 @@ class TestRegister:
     def pre_run_initialization(self):
         self.user_id = "test_register_user_{}".format(time.time())
         self.password = "test_register_password_{}".format(time.time())
-        self.auth = auth.Auth(conf.URL)
+        self.auth = auth.Auth(conf.URL)#"http://127.0.0.1:5000/auth/"
         yield
 
     def test_register_ok(self):
