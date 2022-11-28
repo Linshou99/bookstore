@@ -1,7 +1,6 @@
 import jwt
 import time
 import logging
-import sqlite3 as sqlite
 from be.model import error
 from be.model import db_conn
 import sqlalchemy
@@ -39,7 +38,7 @@ def jwt_decode(encoded_token, user_id: str) -> str:
 
 
 class User(db_conn.DBConn):
-    token_lifetime: int = 3600  # 3600 second
+    token_lifetime: int = 3600  # 身份将被记录 3600 second
 
     def __init__(self):
         db_conn.DBConn.__init__(self)
@@ -62,11 +61,6 @@ class User(db_conn.DBConn):
         try:
             terminal = "terminal_{}".format(str(time.time()))
             token = jwt_encode(user_id, terminal)
-            #self.conn.execute(
-            #    "INSERT into user(user_id, password, balance, token, terminal) "
-             #   "VALUES (?, ?, ?, ?, ?);",
-              #  (user_id, password, 0, token, terminal), )
-            #self.conn.execute("INSERT INTO store.Users (user_id, password, balance, token, terminal) values (:user_id, :password, 0, :token, :terminal)",{"user_id":user_id,"password": password,"token":token,"terminal":terminal })
             self.conn.add(store.Users(user_id=user_id, password=password, balance=0, token=token, terminal=terminal))
             self.conn.commit()
         except sqlalchemy.exc.IntegrityError:
@@ -75,8 +69,7 @@ class User(db_conn.DBConn):
 
     def check_token(self, user_id: str, token: str) -> (int, str):
         cursor = self.conn.query(store.Users.token).filter(store.Users.user_id == user_id)
-        #cursor = self.conn.execute("SELECT token from user where user_id=?", (user_id,))
-        row = cursor.fetchone()
+        row = cursor.first()
         if row is None:
             return error.error_authorization_fail()
         db_token = row[0]
@@ -86,14 +79,11 @@ class User(db_conn.DBConn):
 
     def check_password(self, user_id: str, password: str) -> (int, str):
         cursor = self.conn.query(store.Users.password).filter(store.Users.user_id == user_id)
-        #cursor = self.conn.execute("SELECT password from user where user_id=?", (user_id,))
-        row = cursor.fetchone()
+        row = cursor.first()
         if row is None:
             return error.error_authorization_fail()
-
         if password != row[0]:
             return error.error_authorization_fail()
-
         return 200, "ok"
 
     def login(self, user_id: str, password: str, terminal: str) -> (int, str, str):
@@ -104,22 +94,12 @@ class User(db_conn.DBConn):
                 return code, message, ""
 
             token = jwt_encode(user_id, terminal)
-            users = self.conn.query(store.Users).filter(store.Users.user_id == user_id).all()# 查询条件
-            if users:
-                users.token = token # 更新操作
-                users.terminal = terminal
-                self.conn.add(users) # 添加到会话
-            #cursor = self.conn.query(store.Users).filter_by(store.Users.user_id == user_id).update({'token':token,'terminal':terminal})   
-            #cursor = self.conn.execute(
-             #   "UPDATE user set token= ? , terminal = ? where user_id = ?",
-              #  (token, terminal, user_id), )
-            else:#cursor.rowcount == 0:
+            cursor = self.conn.query(store.Users).filter(store.Users.user_id == user_id).update({'token':token,'terminal':terminal})   
+            if cursor == None:
                 return error.error_authorization_fail() + ("", )
             self.conn.commit()# 提交即保存到数据库
         except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e)), ""
-        except BaseException as e:
-            return 530, "{}".format(str(e)), ""
         return 200, "ok", token
 
     def logout(self, user_id: str, token: str) -> bool:
@@ -130,18 +110,12 @@ class User(db_conn.DBConn):
 
             terminal = "terminal_{}".format(str(time.time()))
             dummy_token = jwt_encode(user_id, terminal)
-            cursor = self.conn.query(store.Users).filter_by(store.Users.user_id == user_id).update({'token':dummy_token,'terminal':terminal})
-            #cursor = self.conn.execute(
-             #   "UPDATE user SET token = ?, terminal = ? WHERE user_id=?",
-              #  (dummy_token, terminal, user_id), )
-            if cursor.rowcount == 0:
+            cursor = self.conn.query(store.Users).filter(store.Users.user_id == user_id).update({'token':dummy_token,'terminal':terminal})
+            if cursor == None:
                 return error.error_authorization_fail()
-
             self.conn.commit()
         except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
-        except BaseException as e:
-            return 530, "{}".format(str(e))
         return 200, "ok"
 
     def unregister(self, user_id: str, password: str) -> (int, str):
@@ -149,7 +123,6 @@ class User(db_conn.DBConn):
         if user == None:
             code, message = error.error_authorization_fail()
             return code, message
-
         if password != user.password:
             code, message = error.error_authorization_fail()
             return code, message
@@ -157,22 +130,6 @@ class User(db_conn.DBConn):
         self.conn.commit()
         return 200, "ok"
 
-        try:
-            code, message = self.check_password(user_id, password)
-            if code != 200:
-                return code, message
-
-            cursor = self.conn.execute("DELETE from user where user_id=?", (user_id,))
-            if cursor.rowcount == 1:
-                self.conn.commit()
-            else:
-                return error.error_authorization_fail()
-        except sqlalchemy.exc.IntegrityError as e:
-            return 528, "{}".format(str(e))
-        except BaseException as e:
-            print("{}".format(str(e)))
-            return 530, "{}".format(str(e))
-        return 200, "ok"
 
     def change_password(self, user_id: str, old_password: str, new_password: str) -> bool:
         try:
@@ -182,16 +139,11 @@ class User(db_conn.DBConn):
 
             terminal = "terminal_{}".format(str(time.time()))
             token = jwt_encode(user_id, terminal)
-            cursor = self.conn.execute(
-                "UPDATE user set password = ?, token= ? , terminal = ? where user_id = ?",
-                (new_password, token, terminal, user_id), )
-            if cursor.rowcount == 0:
+            cursor = self.conn.query(store.Users).filter(store.Users.user_id == user_id).update({'password':new_password,'token':token,'terminal':terminal})
+            if cursor == None:
                 return error.error_authorization_fail()
-
             self.conn.commit()
         except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
-        except BaseException as e:
-            return 530, "{}".format(str(e))
         return 200, "ok"
 
