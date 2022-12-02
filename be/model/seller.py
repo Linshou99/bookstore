@@ -1,6 +1,11 @@
 import sqlite3 as sqlite
 from be.model import error
 from be.model import db_conn
+from be.model import store
+import sqlalchemy
+from sqlalchemy import Column, String, create_engine, Integer, Text, Date
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 
 
 class Seller(db_conn.DBConn):
@@ -16,13 +21,15 @@ class Seller(db_conn.DBConn):
                 return error.error_non_exist_store_id(store_id)
             if self.book_id_exist(store_id, book_id):
                 return error.error_exist_book_id(book_id)
-
-            self.conn.execute("INSERT into store(store_id, book_id, book_info, stock_level)"
-                              "VALUES (?, ?, ?, ?)", (store_id, book_id, book_json_str, stock_level))
+            self.conn.add(store.Store(store_id = store_id, book_id = book_id, book_info = book_json_str, stock_level = stock_level))
+            # self.conn.execute("INSERT into store(store_id, book_id, book_info, stock_level)"
+            #                   "VALUES (?, ?, ?, ?)", (store_id, book_id, book_json_str, stock_level))
             self.conn.commit()
-        except sqlite.Error as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
-        except BaseException as e:
+        # except sqlite.Error as e:
+        #     return 528, "{}".format(str(e))
+        except sqlalchemy.exc.IntegrityError as e:
             return 530, "{}".format(str(e))
         return 200, "ok"
 
@@ -34,13 +41,15 @@ class Seller(db_conn.DBConn):
                 return error.error_non_exist_store_id(store_id)
             if not self.book_id_exist(store_id, book_id):
                 return error.error_non_exist_book_id(book_id)
-
-            self.conn.execute("UPDATE store SET stock_level = stock_level + ? "
-                              "WHERE store_id = ? AND book_id = ?", (add_stock_level, store_id, book_id))
+            cursor = self.conn.query(store.Store).filter(store.Store.store_id == store_id).update({'stock_level':store.Store.stock_level + add_stock_level})   
+            if cursor == None:
+                return error.error_authorization_fail() + ("", )
+            # self.conn.execute("UPDATE store SET stock_level = stock_level + ? "
+            #                   "WHERE store_id = ? AND book_id = ?", (add_stock_level, store_id, book_id))
             self.conn.commit()
-        except sqlite.Error as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
-        except BaseException as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 530, "{}".format(str(e))
         return 200, "ok"
 
@@ -50,11 +59,12 @@ class Seller(db_conn.DBConn):
                 return error.error_non_exist_user_id(user_id)
             if self.store_id_exist(store_id):
                 return error.error_exist_store_id(store_id)
-            self.conn.execute("INSERT into user_store(store_id, user_id)"
-                              "VALUES (?, ?)", (store_id, user_id))
+            self.conn.add(store.User_store(user_id = user_id, store_id = store_id))
+            # self.conn.execute("INSERT into user_store(store_id, user_id)"
+            #                   "VALUES (?, ?)", (store_id, user_id))
             self.conn.commit()
-        except sqlite.Error as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
-        except BaseException as e:
+        except sqlalchemy.exc.IntegrityError as e:
             return 530, "{}".format(str(e))
         return 200, "ok"

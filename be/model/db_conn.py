@@ -3,6 +3,8 @@ import sqlalchemy
 from sqlalchemy import Column, String, create_engine, Integer, Text, Date
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+import time
+from sqlalchemy import and_
 
 class DBConn:
     def __init__(self):
@@ -21,13 +23,14 @@ class DBConn:
             return True
 
     def book_id_exist(self, store_id, book_id):
-        cursor = self.conn.query(store.Store.book_id).filter(store.Store.store_id == store_id and store.Store.book_id == book_id)
-        #cursor = self.conn.execute("SELECT book_id FROM store WHERE store_id = ? AND book_id = ?;", (store_id, book_id))
-        row = cursor.first() # 与 .fetchone() 同意思，但 .fetchone() 是 sqlite 的属性
+        cursor = self.conn.query(store.Store.book_id).filter(and_(store.Store.store_id == store_id, store.Store.book_id == book_id))
+        # cursor = self.conn.execute("SELECT book_id FROM store WHERE store_id = ? AND book_id = ?;", (store_id, book_id))
+        row = cursor.first()
         if row is None:
             return False
         else:
             return True
+        # return False
 
     def store_id_exist(self, store_id):
         cursor = self.conn.query(store.User_store.store_id).filter(store.User_store.store_id == store_id)
