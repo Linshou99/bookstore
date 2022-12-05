@@ -51,3 +51,20 @@ def change_password():
     u = user.User()
     code, message = u.change_password(user_id=user_id, old_password=old_password, new_password=new_password)
     return jsonify({"message": message}), code
+
+@bp_auth.route("/search_all", methods=["POST"])
+def search_all():
+    input_str = request.json.get("input_str", "")
+    page = request.json.get("page", "")
+    u = user.User()
+    code, message, res = u.search_all(input_str=input_str, page=page)
+    return jsonify({"message": message, "res": res}), code
+
+@bp_auth.route("/search_in_store", methods=["POST"])
+def search_in_store():
+    store_id = request.json.get("store_id", "")
+    input_str = request.json.get("input_str", "")
+    page = request.json.get("page", "")
+    u = user.User()
+    code, message, res = u.search_in_store(store_id=store_id, input_str=input_str, page=page)
+    return jsonify({"message": message, "res": res}), code

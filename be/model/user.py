@@ -8,6 +8,8 @@ from sqlalchemy import Column, String, create_engine, Integer, Text, Date
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from be.model import store
+import re
+from sqlalchemy import or_, and_
 
 # encode a json string like:
 #   {
@@ -102,7 +104,7 @@ class User(db_conn.DBConn):
             return 528, "{}".format(str(e)), ""
         return 200, "ok", token
 
-    def logout(self, user_id: str, token: str) -> bool:
+    def logout(self, user_id: str, token: str):
         try:
             code, message = self.check_token(user_id, token)
             if code != 200:
@@ -131,7 +133,7 @@ class User(db_conn.DBConn):
         return 200, "ok"
 
 
-    def change_password(self, user_id: str, old_password: str, new_password: str) -> bool:
+    def change_password(self, user_id: str, old_password: str, new_password: str):
         try:
             code, message = self.check_password(user_id, old_password)
             if code != 200:
@@ -146,4 +148,65 @@ class User(db_conn.DBConn):
         except sqlalchemy.exc.IntegrityError as e:
             return 528, "{}".format(str(e))
         return 200, "ok"
+
+    #字符串input中的关键词按空格隔开，模糊查询
+    def search_all(self, input_str: str, page: int):
+        conn = self.conn
+        #一页有5个返回结果
+        num_of_books_page = 5
+        input_list = set(re.sub('[^\w\u4e00-\u9fff]+', ' ', input_str.lower()).split(' '))
+        #在书名、作者名、书简介和出版社上做关键词匹配
+        rule = or_( *[store.Book.title.like("%"+input+"%") for input in input_list],
+                    *[store.Book.author.like("%"+input+"%") for input in input_list],
+                    *[store.Book.tags.like("%"+input+"%") for input in input_list],
+                    *[store.Book.book_intro.like("%"+input+"%") for input in input_list],
+                    *[store.Book.publisher.like("%"+input+"%") for input in input_list])
+        cursor = conn.query(store.Book.book_id,store.Book.title,store.Book.author,store.Book.publisher,store.Book.book_intro)\
+                     .filter(rule)\
+                     .limit(num_of_books_page)\
+                     .offset(page*num_of_books_page)\
+                     .all()
+        if len(cursor) != 0:
+            res=[]
+            for i in cursor:
+                res.append({'book_id':i[0],'title':i[1],'author':i[2],'publisher':i[3],'book_intro':i[4]})
+            self.conn.commit()
+            return 200, "ok",res
+        else:
+            self.conn.commit()
+            return 200, "ok"," "
+
+
+
+    def search_in_store(self, store_id: str, input_str: str, page: int):
+        conn = self.conn
+        input_list = set(re.sub('[^\w\u4e00-\u9fff]+', ' ', input_str.lower()).split(' '))
+        #在书名、作者名、书简介和出版社上做关键词匹配
+        rule = or_( *[store.Book.title.like("%"+input+"%") for input in input_list],
+                    *[store.Book.author.like("%"+input+"%") for input in input_list],
+                    *[store.Book.tags.like("%"+input+"%") for input in input_list],
+                    *[store.Book.book_intro.like("%"+input+"%") for input in input_list],
+                    *[store.Book.publisher.like("%"+input+"%") for input in input_list])
+        cursor_store = conn.query(store.Store.book_id)\
+                           .filter(store.Store.store_id == store_id)\
+                           .all()
+        res=[]
+        if len(cursor_store) != 0:
+            cursor = conn.query(store.Book.book_id,store.Book.title,store.Book.author,store.Book.publisher,store.Book.book_intro)\
+                        .filter(and_(store.Book.book_id.in_(cursor_store), rule))\
+                        .limit(10)\
+                        .offset(page*10)\
+                        .all()
+            if len(cursor) != 0:
+                for i in cursor:
+                    res.append({'book_id':i[0],'title':i[1],'author':i[2],'publisher':i[3],'book_intro':i[4]})
+        self.conn.commit()           
+        if len(res) != 0:
+            return 200, "ok",res
+        else:
+            return 200, "ok"," "
+
+
+            
+        
 

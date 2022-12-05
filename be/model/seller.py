@@ -68,3 +68,24 @@ class Seller(db_conn.DBConn):
         except sqlalchemy.exc.IntegrityError as e:
             return 530, "{}".format(str(e))
         return 200, "ok"
+
+    def send_books(self, user_id: str, order_id: str) -> (int, str):
+        conn = self.conn
+        cursor = conn.query(store.New_order_paid)\
+                     .filter(store.New_order_paid.order_id == order_id)
+        if cursor == None:
+            return error.error_invalid_order_id(order_id)   
+        row = cursor.first()
+        store_id = row[2]
+        cursor_store = conn.query(store.User_store.user_id)\
+                     .filter(store.User_store.store_id == store_id)
+        row_store = cursor_store.first()
+        if row_store[0] != user_id:
+            return error.error_authorization_fail()
+        if row[4] == 1 or row[4] == 2:
+            return error.error_books_duplicate_sent()      
+        cursor = self.conn.query(store.New_order_paid)\
+                                  .filter(store.New_order_paid.order_id == order_id)\
+                                  .update({'status':1}) 
+        self.conn.commit()
+        return 200, "ok"
