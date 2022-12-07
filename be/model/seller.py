@@ -70,22 +70,31 @@ class Seller(db_conn.DBConn):
         return 200, "ok"
 
     def send_books(self, user_id: str, order_id: str) -> (int, str):
+        print("xxxxxxxxx")
         conn = self.conn
-        cursor = conn.query(store.New_order_paid)\
+        cursor = conn.query(store.New_order_paid.store_id,store.New_order_paid.status)\
                      .filter(store.New_order_paid.order_id == order_id)
         if cursor == None:
+            print("111111111")
             return error.error_invalid_order_id(order_id)   
+        print("222222")
         row = cursor.first()
-        store_id = row[2]
+        store_id = row[0]
         cursor_store = conn.query(store.User_store.user_id)\
                      .filter(store.User_store.store_id == store_id)
         row_store = cursor_store.first()
+        print("3333333")
         if row_store[0] != user_id:
+            print("44444")
             return error.error_authorization_fail()
-        if row[4] == 1 or row[4] == 2:
-            return error.error_books_duplicate_sent()      
+        if row[1] == 1 or row[1] == 2:
+            print("5555555")
+            return error.error_books_duplicate_sent()    
+        print("66666")  
         cursor = self.conn.query(store.New_order_paid)\
                                   .filter(store.New_order_paid.order_id == order_id)\
                                   .update({'status':1}) 
+        print("777777777")
         self.conn.commit()
+        print("yyyyyyyyy")
         return 200, "ok"

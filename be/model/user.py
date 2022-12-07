@@ -7,7 +7,7 @@ import sqlalchemy
 from sqlalchemy import Column, String, create_engine, Integer, Text, Date
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from be.model import store
+from be.model import init_book_db,store
 import re
 from sqlalchemy import or_, and_
 
@@ -156,12 +156,12 @@ class User(db_conn.DBConn):
         num_of_books_page = 5
         input_list = set(re.sub('[^\w\u4e00-\u9fff]+', ' ', input_str.lower()).split(' '))
         #在书名、作者名、书简介和出版社上做关键词匹配
-        rule = or_( *[store.Book.title.like("%"+input+"%") for input in input_list],
-                    *[store.Book.author.like("%"+input+"%") for input in input_list],
-                    *[store.Book.tags.like("%"+input+"%") for input in input_list],
-                    *[store.Book.book_intro.like("%"+input+"%") for input in input_list],
-                    *[store.Book.publisher.like("%"+input+"%") for input in input_list])
-        cursor = conn.query(store.Book.book_id,store.Book.title,store.Book.author,store.Book.publisher,store.Book.book_intro)\
+        rule = or_( *[init_book_db.Book.title.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.author.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.tags.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.book_intro.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.publisher.like("%"+input+"%") for input in input_list])
+        cursor = conn.query(init_book_db.Book.book_id,init_book_db.Book.title,init_book_db.Book.author,init_book_db.Book.publisher,init_book_db.Book.book_intro)\
                      .filter(rule)\
                      .limit(num_of_books_page)\
                      .offset(page*num_of_books_page)\
@@ -174,39 +174,38 @@ class User(db_conn.DBConn):
             return 200, "ok",res
         else:
             self.conn.commit()
-            return 200, "ok"," "
-
+            return error.error_no_matching_books_in_store(),"can not find"
 
 
     def search_in_store(self, store_id: str, input_str: str, page: int):
         conn = self.conn
         input_list = set(re.sub('[^\w\u4e00-\u9fff]+', ' ', input_str.lower()).split(' '))
         #在书名、作者名、书简介和出版社上做关键词匹配
-        rule = or_( *[store.Book.title.like("%"+input+"%") for input in input_list],
-                    *[store.Book.author.like("%"+input+"%") for input in input_list],
-                    *[store.Book.tags.like("%"+input+"%") for input in input_list],
-                    *[store.Book.book_intro.like("%"+input+"%") for input in input_list],
-                    *[store.Book.publisher.like("%"+input+"%") for input in input_list])
+        rule = or_( *[init_book_db.Book.title.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.author.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.tags.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.book_intro.like("%"+input+"%") for input in input_list],
+                    *[init_book_db.Book.publisher.like("%"+input+"%") for input in input_list])
         cursor_store = conn.query(store.Store.book_id)\
                            .filter(store.Store.store_id == store_id)\
                            .all()
         res=[]
+        print("cursor_store:",[i[0] for i in cursor_store])
         if len(cursor_store) != 0:
-            cursor = conn.query(store.Book.book_id,store.Book.title,store.Book.author,store.Book.publisher,store.Book.book_intro)\
-                        .filter(and_(store.Book.book_id.in_(cursor_store), rule))\
+            cursor = conn.query(init_book_db.Book.book_id,init_book_db.Book.title,init_book_db.Book.author,init_book_db.Book.publisher,init_book_db.Book.book_intro)\
+                        .filter(and_(init_book_db.Book.book_id.in_([i[0] for i in cursor_store]),rule))\
                         .limit(10)\
                         .offset(page*10)\
                         .all()
+            print("cursor_book:",[i[0] for i in cursor])
+            print("cursor:",cursor)
             if len(cursor) != 0:
                 for i in cursor:
+                    print("i:\n",i)
                     res.append({'book_id':i[0],'title':i[1],'author':i[2],'publisher':i[3],'book_intro':i[4]})
         self.conn.commit()           
         if len(res) != 0:
             return 200, "ok",res
         else:
-            return 200, "ok"," "
-
-
-            
-        
+            return error.error_no_matching_books_in_store(),"can not find"
 

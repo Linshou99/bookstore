@@ -11,12 +11,16 @@ from sqlalchemy import Column, String, create_engine, Integer, Text, DateTime
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import and_
-from datetime import datetime
+from datetime import datetime,timedelta
 from threading import Timer
+from apscheduler.schedulers.background import BackgroundScheduler
+
+
 
 class Buyer(db_conn.DBConn):
     def __init__(self):
         db_conn.DBConn.__init__(self)
+     
 
     def new_order(self, user_id: str, store_id: str, id_and_count: [(str, int)]) -> (int, str, str):
         order_id = ""
@@ -33,8 +37,11 @@ class Buyer(db_conn.DBConn):
             
             for book_id, count in id_and_count:
                 cursor = None
+                c = self.conn.query(store.Store.book_id).filter(store.Store.store_id == store_id,).all()
+                print("store_book_id:",c)
                 # 找店里有没有这本书以及这本书的id、库存、简介
-                cursor = self.conn.query(store.Store.book_id, store.Store.stock_level, store.Store.book_info).filter(and_(store.Store.store_id == store_id, store.Store.book_id == book_id))  
+                cursor = self.conn.query(store.Store.book_id, store.Store.stock_level, store.Store.book_info)\
+                                  .filter(and_(store.Store.store_id == store_id, store.Store.book_id==int(book_id) ))  
                 # cursor = self.conn.execute(
                 #     "SELECT book_id, stock_level, book_info FROM store "
                 #     "WHERE store_id = ? AND book_id = ?;",
@@ -72,8 +79,6 @@ class Buyer(db_conn.DBConn):
             # 插入新总order
             time_ = datetime.utcnow()#暂存
             self.conn.add(store.New_order(order_id = uid, user_id = user_id, store_id = store_id, price = total_price, time_ = time_))
-            timer = Timer(10, Buyer.auto_cancel_order(order_id))#10s内未付款自动取消订单
-            timer.start()
             # self.conn.execute(
             #     "INSERT INTO new_order(order_id, store_id, user_id) "
             #     "VALUES(?, ?, ?);",
@@ -215,16 +220,16 @@ class Buyer(db_conn.DBConn):
     
     def receive_books(self, user_id: str, order_id: str) -> (int, str):
         conn = self.conn
-        cursor = conn.query(store.New_order_paid)\
+        cursor = conn.query(store.New_order_paid.user_id,store.New_order_paid.status)\
                      .filter(store.New_order_paid.order_id == order_id)
         if cursor == None:
             return error.error_invalid_order_id(order_id)   
         row = cursor.first()
-        if row[1] != user_id:
+        if row[0] != user_id:
             return error.error_authorization_fail()
-        if row[4] == 0:
+        if row[1] == 0:
             return error.error_books_not_sent()      
-        if row[4] == 2:
+        if row[1] == 2:
             return error.error_books_duplicate_receive() 
         cursor = self.conn.query(store.New_order_paid)\
                                   .filter(store.New_order_paid.order_id == order_id)\
@@ -236,10 +241,10 @@ class Buyer(db_conn.DBConn):
     def cancel_order(self, user_id: str, order_id: str) -> (int, str):
         conn = self.conn
         cursor = conn.query(store.New_order.order_id,store.New_order.user_id,store.New_order.store_id,store.New_order.price)\
-                     .filter(store.New_order.order_id == order_id)
+                     .filter(store.New_order.order_id == order_id).all()
         #取消未付款订单
-        if cursor is not None:
-            row = cursor.first()
+        if len(cursor) != 0:
+            row = cursor[0]
             if row[1] != user_id:
                 return error.error_authorization_fail()
             order_id = row[0]
@@ -253,10 +258,10 @@ class Buyer(db_conn.DBConn):
                 return error.error_invalid_order_id(order_id)
         else:
             cursor = conn.query(store.New_order_paid.order_id,store.New_order_paid.user_id,store.New_order_paid.store_id,store.New_order_paid.price)\
-                         .filter(store.New_order_paid.order_id == order_id)
+                         .filter(store.New_order_paid.order_id == order_id).all()
             #取消已付款订单
-            if cursor is not None:
-                row = cursor.first()
+            if len(cursor) != 0:
+                row = cursor[0]
                 if row[1] != user_id:
                     return error.error_authorization_fail()
                 order_id = row[0]
@@ -304,29 +309,37 @@ class Buyer(db_conn.DBConn):
         self.conn.commit()
         return 200, "ok"
 
-    def auto_cancel_order(self, order_id: str) -> (int, str):
+    def auto_cancel_order(self) -> (int, str):
+        #print('time3333333auto: ', datetime.utcnow())
+        wait_time = 20#10s后自动取消订单
         conn = self.conn
-        cursor = conn.query(store.New_order.order_id,store.New_order.user_id,store.New_order.store_id,store.New_order.price)\
-                        .filter(store.New_order.order_id == order_id) 
-        #未查到订单说明已付款或已被买家自行取消，无需做出动作
-        if cursor is not None:
-            row = cursor.first()
-            cursor_del = conn.query(store.New_order)\
-                .filter(store.New_order.order_id == order_id)\
-                .delete()
-            if cursor_del == None:
-                return error.error_invalid_order_id(order_id)
-            conn.add(store.New_order_cancel(order_id = row[0], user_id = row[1], store_id = row[2], price = row[3]))
+        now = datetime.utcnow()
+        cursor_all = conn.query(store.New_order.order_id)\
+                     .all()
+        if(len(cursor_all)) != 0:
+            cursor = conn.query(store.New_order.order_id,store.New_order.user_id,store.New_order.store_id,store.New_order.price,store.New_order.time_)\
+                            .filter(store.New_order.time_ <= now-timedelta(seconds=wait_time)).all()
+            #未查到订单说明已付款或已被买家自行取消，无需做出动作
+            if len(cursor) != 0:
+                for row in cursor:
+                    cursor_del = conn.query(store.New_order)\
+                        .filter(store.New_order.order_id == row[0])\
+                        .delete()
+                    if cursor_del == None:
+                        self.conn.commit()
+                        return error.error_invalid_order_id(row[0])
+                    conn.add(store.New_order_cancel(order_id = row[0], user_id = row[1], store_id = row[2], price = row[3]))
         self.conn.commit()
         return 200, "ok"
+
 
     #为测试auto_cancel_order作的函数
     def is_order_cancelled(self, order_id: str) -> (int, str):
         conn = self.conn
-        cursor = conn.query(store.New_order_cancel)\
+        cursor = conn.query(store.New_order_cancel.order_id)\
                         .filter(store.New_order_cancel.order_id == order_id) 
         row = cursor.first()
-        if row is None:
+        if row == None:
             self.conn.commit()
             return error.error_auto_cancel_fail(order_id)#超时前已付款
         else:
@@ -339,22 +352,22 @@ class Buyer(db_conn.DBConn):
             return error.error_non_exist_user_id(user_id)
         res = []
         #查询未付款订单
-        cursor = conn.query(store.New_order.order_id,store.New_order.user_id,store.New_order.store_id,store.New_order.price,store.New_order.time_)\
+        cursor = conn.query(store.New_order.order_id,store.New_order.user_id,store.New_order.store_id,store.New_order.price)\
                     .filter(store.New_order.user_id == user_id)\
                     .all()
         if len(cursor) != 0:
             for row in cursor:
                 details = []
                 order_id = row[0]
-                cursor_detail = conn.query(store.New_order_detail.book_id,store.Book.title,store.New_order_detail.count,store.New_order_detail.price)\
-                                    .filter(and_(store.New_order_detail.order_id == order_id, store.New_order_detail.book_id == store.Book.book_id))\
+                cursor_detail = conn.query(store.New_order_detail.book_id,store.New_order_detail.count,store.New_order_detail.price)\
+                                    .filter(and_(store.New_order_detail.order_id == order_id))\
                                     .all()
                 if len(cursor_detail) != 0:
                     for i in cursor_detail:
-                        details.append({'book_id':i[0],'title':i[1],'count':i[2],'price':i[3]})
+                        details.append({'book_id':i[0],'count':i[1],'price':i[2]})
                 else:
                     return error.error_invalid_order_id(order_id)
-                res.append({'status':"not paid",'order_id':row[0],'buyer_id':row[1],'store_id':row[2],'total_price':row[3],'order_time':row[4],'details':details})
+                res.append({'status':"not paid",'order_id':row[0],'buyer_id':row[1],'store_id':row[2],'total_price':row[3],'details':details})
         #查询已付款订单
         books_status=["not send","already send","already receive"]
         cursor = conn.query(store.New_order_paid.order_id,store.New_order_paid.user_id,store.New_order_paid.store_id,store.New_order_paid.price,store.New_order_paid.status)\
@@ -364,12 +377,12 @@ class Buyer(db_conn.DBConn):
             for row in cursor:
                 details = []
                 order_id = row[0]
-                cursor_detail = conn.query(store.New_order_detail.book_id,store.Book.title,store.New_order_detail.count,store.New_order_detail.price)\
-                                    .filter(and_(store.New_order_detail.order_id == order_id, store.New_order_detail.book_id == store.Book.book_id))\
+                cursor_detail = conn.query(store.New_order_detail.book_id,store.New_order_detail.count,store.New_order_detail.price)\
+                                    .filter(and_(store.New_order_detail.order_id == order_id))\
                                     .all()
                 if len(cursor_detail) != 0:
                     for i in cursor_detail:
-                        details.append({'book_id':i[0],'title':i[1],'count':i[2],'price':i[3]})
+                        details.append({'book_id':i[0],'count':i[1],'price':i[2]})
                 else:
                     return error.error_invalid_order_id(order_id)
                 res.append({'status':"already paid",'order_id':row[0],'buyer_id':row[1],'store_id':row[2],'total_price':row[3],'books_status':books_status[row[4]],'details':details})
@@ -381,12 +394,12 @@ class Buyer(db_conn.DBConn):
             for row in cursor:
                 details = []
                 order_id = row[0]
-                cursor_detail = conn.query(store.New_order_detail.book_id,store.Book.title,store.New_order_detail.count,store.New_order_detail.price)\
-                                    .filter(and_(store.New_order_detail.order_id == order_id, store.New_order_detail.book_id == store.Book.book_id))\
+                cursor_detail = conn.query(store.New_order_detail.book_id,store.New_order_detail.count,store.New_order_detail.price)\
+                                    .filter(and_(store.New_order_detail.order_id == order_id))\
                                     .all()
                 if len(cursor_detail) != 0:
                     for i in cursor_detail:
-                        details.append({'book_id':i[0],'title':i[1],'count':i[2],'price':i[3]})
+                        details.append({'book_id':i[0],'count':i[1],'price':i[2]})
                 else:
                     return error.error_invalid_order_id(order_id)
                 res.append({'status':"cancelled",'order_id':row[0],'buyer_id':row[1],'store_id':row[2],'total_price':row[3],'details':details})
@@ -400,7 +413,9 @@ class Buyer(db_conn.DBConn):
 
 
 
-
+sched = BackgroundScheduler()
+sched.add_job(Buyer().auto_cancel_order, 'interval', id='5_second_job', seconds=5)
+sched.start()
             
                             
             
