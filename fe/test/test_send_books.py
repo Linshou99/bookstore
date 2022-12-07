@@ -38,21 +38,29 @@ class TestSendBooks:
         yield
 
     def test_ok(self):
+        
         code = self.seller.send_books(self.seller_id, self.order_id)
+        print("1")
         assert code == 200
 
     def test_invalid_order_id(self):
+        print("2")
         code = self.seller.send_books(self.seller_id, self.order_id+'x')
+        
         assert code != 200
 
 
     def test_authorization_error(self):
+        print("3")
         code = self.seller.send_books(self.seller_id+'x', self.order_id)
+        
         assert code != 200
 
     def test_books_duplicate_send(self):
         code = self.seller.send_books(self.seller_id, self.order_id)
+        print("4")
         assert code == 200
         code = self.seller.send_books(self.seller_id, self.order_id)
+        print("5")
         assert code != 200
 

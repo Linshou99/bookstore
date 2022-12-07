@@ -22,4 +22,8 @@ class TestSearchALL:
         code = self.auth.search_all(self.input_str, self.page)
         assert code == 200
 
+    def test_no_matching(self):
+        code = self.auth.search_all("xxx", self.page)
+        assert code != 200
+
 

@@ -47,13 +47,19 @@ class Seller:
         }
         #print(simplejson.dumps(json))
         url = urljoin(self.url_prefix, "add_stock_level")
+        print(url)
         headers = {"token": self.token}
         r = requests.post(url, headers=headers, json=json)
         return r.status_code
 
     def send_books(self, seller_id: str, order_id: str) -> int:
+        print("123123")
         json = {"user_id": seller_id, "order_id": order_id}
         url = urljoin(self.url_prefix, "send_books")
+        print(url)
         headers = {"token": self.token}
+        print("00000")
+        #r = requests.post("D:\bookstore-main (1)\be\view\seller.py\send_books", headers=headers, json=json)
         r = requests.post(url, headers=headers, json=json)
+        print("789789")
         return r.status_code

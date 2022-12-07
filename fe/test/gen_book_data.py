@@ -47,10 +47,11 @@ class GenBook:
                 buy_num = 0
             # add a new pair
             if non_exist_book_id:
-                bk.id = bk.id + "_x"
+                bk.id = "-"+bk.id 
             if low_stock_level:
                 buy_num = stock_level + 1
             self.buy_book_info_list.append((bk, buy_num))
+            print("bk_id:",bk.id)
 
         for item in self.buy_book_info_list:
             self.buy_book_id_list.append((item[0].id, item[1]))

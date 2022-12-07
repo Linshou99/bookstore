@@ -15,7 +15,7 @@ class TestAutoCancelOrder:
         self.store_id = "test_auto_cancel_order_store_id_{}".format(str(uuid.uuid1()))
         self.buyer_id = "test_auto_cancel_order_buyer_id_{}".format(str(uuid.uuid1()))
         self.password = self.buyer_id
-        self.wait_time = 10#10s后自动取消订单
+        self.wait_time = 20#10s后自动取消订单
         gen_book = GenBook(self.seller_id, self.store_id)
         self.seller = gen_book.seller
         ok, buy_book_id_list = gen_book.gen(non_exist_book_id=False, low_stock_level=False, max_book_count=5)
@@ -40,7 +40,7 @@ class TestAutoCancelOrder:
     def test_ok_overtime(self):
         code, self.order_id = self.buyer.new_order(self.store_id, self.buy_book_id_list)
         assert code == 200
-        time.sleep(self.wait_time+1)
+        time.sleep(self.wait_time+5)
         code = self.buyer.is_order_cancelled(self.order_id)
         assert code == 200
 
@@ -50,7 +50,7 @@ class TestAutoCancelOrder:
         assert code == 200
         code = self.buyer.cancel_order(self.buyer_id, self.order_id)
         assert code == 200
-        time.sleep(self.wait_time+1)
+        time.sleep(self.wait_time+5)
         code = self.buyer.is_order_cancelled(self.order_id)
         assert code == 200
 
@@ -60,6 +60,6 @@ class TestAutoCancelOrder:
         assert code == 200
         code = self.buyer.payment(self.order_id)
         assert code == 200
-        time.sleep(self.wait_time+1)
+        time.sleep(self.wait_time+5)
         code = self.buyer.is_order_cancelled(self.order_id)
         assert code != 200
