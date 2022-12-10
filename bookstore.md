@@ -840,6 +840,16 @@ class DBConn:
       self.conn.commit()
       return 200, "ok"
   ```
+这里还用到了 python 定时器库 apscheduler，需要在命令行输入 `pip install apscheduler` 下载。
+
+为了实现定时器到期自动取消订单的效果，在文件 be/model/buyer.py 最后插入以下语句：
+```python
+sched = BackgroundScheduler()
+sched.add_job(Buyer().auto_cancel_order, 'interval', id='5_second_job', seconds=5)
+sched.start()
+```
+设置 BackgroundScheduler 类定时器，调用 start 后主线程不会阻塞并可以持久化任务。它能实现每隔 5s 就调度 Buyer().auto_cancel_order 运行一次，而 Buyer().auto_cancel_order 是自动取消订单功能函数，即每隔五秒自动搜索并取消一次过期未付款订单。通过修改 add_job() 的参数 seconds，就可以改变任务调度的间隔时间，每个任务都会以线程的方式被调度。
+
 7. 检查订单是否取消（is_order_cancelled 函数）：
    
    为测试 auto_cancel_order 作的函数，判断订单没有自动取消的原因。根据 order_id 查询已取消的订单中是否有与该订单号相匹配的，若没找到则证明在超时前已付款无法再对订单自动取消，返回错误类型 error_auto_cancel_fail，执行码 524；找到说明订单以成功取消（要么超时前已经由用户取消要么到时间自动取消，取决于测试时的线程休眠时间），则返回执行码 200 和执行消息 'ok'。
@@ -1110,17 +1120,9 @@ def test_ok_not_overtime_paid(self):
 ```
 生成新的未付款订单，执行成功返回执行码 200；接着买家付款，付款成功返回执行码 200；然后让线程休眠一次未付款订单自动取消周期加五秒后，查询订单是否被取消，若返回的执行码不是 200 则说明未付款订单已被买家取消。执行过程中未发生断言错误则测试通过。
 
-这是一个比较特殊的测试，比起其他测试代码，自动取消订单设置了让线程休眠的代码行，为的是让线程运行时停下，等待自动取消订单后再判断订单状态是否被自动取消、手动取消、已付款。这里用到了 python 定时器库 apscheduler，需要在命令行输入 `pip install apscheduler` 下载。
+这是一个比较特殊的测试，比起其他测试代码，自动取消订单设置了让线程休眠的代码行，为的是让线程运行时停下，等待自动取消订单后再判断订单状态是否被自动取消、手动取消、已付款。线程休眠与 python 定时器相互配合实现自动取消订单的测试。
 
-自动取消订单功能在 be/model/buyer.py 文件中，为了实现定时器的效果，在文件最后插入以下语句：
-```python
-sched = BackgroundScheduler()
-sched.add_job(Buyer().auto_cancel_order, 'interval', id='5_second_job', seconds=5)
-sched.start()
-```
-设置 BackgroundScheduler 类定时器，调用 start 后主线程不会阻塞并可以持久化任务。它能实现每隔 5s 就调度 Buyer().auto_cancel_order 运行一次，而 Buyer().auto_cancel_order 是自动取消订单功能函数，即每隔五秒自动搜索并取消一次过期未付款订单。通过修改 add_job() 的参数 seconds，就可以改变任务调度的间隔时间，每个任务都会以线程的方式被调度。
-
-功能的测试代码也大同小异，就不再介绍其他功能的测试用例了。
+其他功能的测试代码也大同小异，只是不需要等待线程休眠的时间可以直接测试，实现逻辑更简洁一些。这里就不再介绍其他功能的测试用例了。
 
 ### 大作业亮点
 我们小组的作业使用了 git 版本管理工具，方便多人协调工作、上传或查看代码、有效监听谁修改代码、获取工作的历史版本、本地及远程操作。我们在 github.com/Linshou99 下建仓库并添加合作者直接 clone 我们的项目，以及 fork 到另两位组员的仓库并向该仓库发起 pull request 请求三种方式，最终采用三者地位都平等的方式。当有需要组员修改后的代码时，自行拉取至本地即可。
